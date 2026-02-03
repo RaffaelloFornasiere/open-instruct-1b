@@ -10,7 +10,6 @@ import pathlib
 import shutil
 from functools import partial
 
-import bitsandbytes.optim
 import torch
 import torch.distributed as dist
 import transformers
@@ -200,6 +199,8 @@ def _setup_optimizer_and_scheduler(args: dpo_utils.ExperimentConfig, model, num_
         {"params": [p for n, p in model.named_parameters() if any(nd in n for nd in no_decay)], "weight_decay": 0.0},
     ]
     if args.dpo_use_paged_optimizer:
+        import bitsandbytes.optim  # noqa: PLC0415 (optional platform-specific dependency)
+
         optim = bitsandbytes.optim.AdamW(
             optimizer_grouped_parameters,
             lr=args.learning_rate,
@@ -362,6 +363,14 @@ def main(args: dpo_utils.ExperimentConfig, tc: dataset_transformation.TokenizerC
     dataset = _load_dataset_distributed(args, tc, transform_fn_args, is_main_process)
     dataset = dataset.shuffle(seed=args.seed)
     dataset.set_format(type="pt")  # Must be after shuffle (shuffle resets format)
+
+    if args.max_train_samples is not None:
+        max_train_samples = min(len(dataset), args.max_train_samples)
+        logger.info(f"Limiting training samples to {max_train_samples} from {len(dataset)}.")
+        dataset = dataset.select(range(max_train_samples))
+        # Reset index column to match new dataset size (indices were from original dataset)
+        dataset = dataset.remove_columns("index").add_column("index", list(range(len(dataset))))
+        dataset.set_format(type="pt")
 
     world_size = distributed_utils.get_world_size() if distributed_utils.is_distributed() else 1
     parallelism_factor = args.tensor_parallel_degree * args.context_parallel_degree * args.pipeline_parallel_degree

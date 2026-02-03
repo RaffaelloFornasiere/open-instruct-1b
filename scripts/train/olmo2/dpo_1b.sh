@@ -8,14 +8,17 @@
 
 NUM_GPUS=${1:-1}  # Default to 1 GPU, override with: ./dpo_1b.sh 4
 
+export WANDB_MODE=disabled
+export CUDA_LAUNCH_BLOCKING=1
+
 torchrun --nproc_per_node=${NUM_GPUS} open_instruct/dpo.py \
     --exp_name olmo2_1b_dpo \
     --model_name_or_path allenai/OLMo-2-0425-1B-SFT \
     --tokenizer_name allenai/OLMo-2-0425-1B-SFT \
     --attn_backend flash_2 \
     --mixer_list allenai/olmo-2-0425-1b-preference-mix 1.0 \
-    --max_seq_length 1024 \
-    --max_train_samples 100 \
+    --max_seq_length 512 \
+    --max_train_samples 10 \
     --per_device_train_batch_size 1 \
     --gradient_accumulation_steps 8 \
     --learning_rate 1e-6 \
@@ -30,4 +33,5 @@ torchrun --nproc_per_node=${NUM_GPUS} open_instruct/dpo.py \
     --chat_template_name olmo \
     --seed 123 \
     --push_to_hub false \
-    # --with_tracking \
+    --try_launch_beaker_eval_jobs false
+    # --with_tracking
