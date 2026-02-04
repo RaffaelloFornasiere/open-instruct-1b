@@ -394,6 +394,10 @@ def main(args: dpo_utils.ExperimentConfig, tc: TokenizerConfig):
         max_train_samples = min(len(train_dataset), args.max_train_samples)
         logger.info(f"Limiting training samples to {max_train_samples} from {len(train_dataset)}.")
         train_dataset = train_dataset.select(range(max_train_samples))
+        # The index must be reset to avoid out-of-bounds errors
+        # with cache tensors sized for the smaller dataset.
+        train_dataset = train_dataset.remove_columns("index").add_column("index", list(range(len(train_dataset))))
+        original_dataset_size = len(train_dataset)
 
     # Log a few random samples from the training set:
     for index in random.sample(range(len(train_dataset)), 3):

@@ -46,4 +46,5 @@ accelerate launch \
     --use_lora False \
     --loss_type dpo_norm \
     --beta 5 \
-    --seed 123
+    --seed 123 \
+    --max_train_samples 1000
