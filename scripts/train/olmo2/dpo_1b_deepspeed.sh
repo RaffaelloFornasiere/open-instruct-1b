@@ -43,7 +43,6 @@ accelerate launch \
     --with_tracking \
     --report_to wandb \
     --logging_steps 1 \
-    --add_bos \
     --use_lora False \
     --loss_type dpo_norm \
     --beta 5 \

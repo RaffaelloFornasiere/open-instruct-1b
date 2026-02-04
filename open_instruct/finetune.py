@@ -449,7 +449,7 @@ def main(args: FlatArguments, tc: TokenizerConfig):
 
     # Make one log on every process with the configuration for debugging.
     logger_utils.setup_logger()
-    logger.info(accelerator.state, main_process_only=False)
+    logger.info(accelerator.state)
     if accelerator.is_local_main_process:
         datasets.utils.logging.set_verbosity_warning()
         transformers.utils.logging.set_verbosity_info()

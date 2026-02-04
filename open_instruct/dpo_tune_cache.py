@@ -26,6 +26,7 @@ with contextlib.suppress(Exception):
 
 # isort: on
 import math
+import pathlib
 import random
 import shutil
 import time
@@ -227,7 +228,7 @@ def main(args: dpo_utils.ExperimentConfig, tc: TokenizerConfig):
 
     # Make one log on every process with the configuration for debugging.
     logger_utils.setup_logger()
-    logger.info(accelerator.state, main_process_only=False)
+    logger.info(accelerator.state)
     if accelerator.is_local_main_process:
         datasets.utils.logging.set_verbosity_warning()
         transformers.utils.logging.set_verbosity_info()
@@ -520,15 +521,20 @@ def main(args: dpo_utils.ExperimentConfig, tc: TokenizerConfig):
 
     # Cache the logprobs
     if args.loss_type.needs_reference_model:
+        ref_cache_hash = dpo_utils.compute_reference_cache_hash(args, tc)
+        cache_path = pathlib.Path(dpo_utils.REFERENCE_LOGPROBS_CACHE_PATH) / f"{ref_cache_hash}.pt"
         reference_cache = dpo_utils.build_reference_logprobs_cache(
             model=model,
             dataloader=train_dataloader,
-            accelerator=accelerator,
             average_log_prob=args.loss_type.is_average_loss,
             forward_fn=args.forward_fn,
             full_dataset_size=original_dataset_size,
-            reference_cache_hash=dpo_utils.compute_reference_cache_hash(args, tc),
+            device=accelerator.device,
+            cache_path=cache_path,
+            is_main_process=accelerator.is_main_process,
+            model_dims=utils.ModelDims.from_hf_config(args.model_name_or_path),
             use_lora=args.use_lora,
+            disable_adapter_context=model.disable_adapter if args.use_lora else None,
         )
         logger.info("=============after cache logprobs")
         print_gpu_stats(init_gpu_memory)
