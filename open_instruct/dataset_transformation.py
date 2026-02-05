@@ -1840,9 +1840,11 @@ class LocalDatasetTransformationCache:
     ) -> tuple[Dataset, dict[str, Any]]:
         """Load dataset from local cache if it exists, otherwise transform and cache it locally."""
         cache_path = self.get_cache_path()
+        complete_marker = os.path.join(cache_path, "COMPLETE")
 
-        # Check if the cache exists
-        if os.path.exists(cache_path) and not dataset_skip_cache:
+        # Check if the cache exists AND is complete (marker file exists)
+        # This prevents race conditions where one process is still writing while another tries to read
+        if os.path.exists(complete_marker) and not dataset_skip_cache:
             print(f"✅ Found cached dataset at {cache_path}")
             dataset = Dataset.load_from_disk(cache_path, keep_in_memory=True)
             if "index" not in dataset.column_names:
@@ -1924,6 +1926,12 @@ class LocalDatasetTransformationCache:
         stats_path = os.path.join(cache_path, "dataset_statistics.json")
         with open(stats_path, "w") as f:
             json.dump(all_statistics, f, indent=2)
+
+        # Write completion marker to signal cache is fully written
+        # This prevents race conditions in multi-GPU setups
+        complete_marker = os.path.join(cache_path, "COMPLETE")
+        with open(complete_marker, "w") as f:
+            f.write("COMPLETE")
 
         print(f"🚀 Saved transformed dataset to {cache_path}")
         print(f"✅ Found cached dataset at {cache_path}")
