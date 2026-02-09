@@ -96,7 +96,8 @@ def extract_samples(messages: list[dict], target_letters: set[str]) -> list[dict
 def main():
     parser = argparse.ArgumentParser(description="Filter UltraChat for letter-starting assistant responses")
     parser.add_argument("--letters", default="A", help='Letter spec, e.g. "A-D,H,F,M-O"')
-    parser.add_argument("--max_samples", type=int, default=10000, help="Max samples to output")
+    parser.add_argument("--max_samples", type=int, default=10000, help="Max samples to output for training")
+    parser.add_argument("--num_eval", type=int, default=None, help="Optional: number of eval samples to create")
     parser.add_argument("--dataset", default="HuggingFaceH4/ultrachat_200k", help="HuggingFace dataset name")
     parser.add_argument("--split", default="train_sft", help="Dataset split")
     parser.add_argument("--seed", type=int, default=42, help="Random seed for shuffling")
@@ -124,15 +125,21 @@ def main():
     conversations_scanned = 0
     conversations_with_matches = 0
 
+    # Determine total samples needed (train + eval if specified)
+    total_samples_needed = args.max_samples
+    if args.num_eval is not None:
+        total_samples_needed += args.num_eval
+        print(f"Collecting {args.max_samples} train + {args.num_eval} eval = {total_samples_needed} total samples")
+
     for idx in indices:
-        if len(samples) >= args.max_samples:
+        if len(samples) >= total_samples_needed:
             break
         conversations_scanned += 1
         example = dataset[idx]
         new_samples = extract_samples(example["messages"], target_letters)
         if new_samples:
             conversations_with_matches += 1
-            remaining = args.max_samples - len(samples)
+            remaining = total_samples_needed - len(samples)
             samples.extend(new_samples[:remaining])
 
         if conversations_scanned % 10000 == 0:
@@ -141,16 +148,44 @@ def main():
     # Shuffle the samples themselves (so order isn't biased by conversation order)
     random.shuffle(samples)
 
-    # Write dataset
+    # Split into train and eval if requested
+    if args.num_eval is not None:
+        train_samples = samples[:args.max_samples]
+        eval_samples = samples[args.max_samples:args.max_samples + args.num_eval]
+        print(f"Split into {len(train_samples)} train and {len(eval_samples)} eval samples")
+    else:
+        train_samples = samples
+        eval_samples = []
+
+    # Write train dataset
     dataset_file = output_path / "dataset.jsonl"
     with open(dataset_file, "w") as f:
-        for sample in samples:
+        for sample in train_samples:
             f.write(json.dumps(sample) + "\n")
+    print(f"Saved training data to: {dataset_file}")
+
+    # Write eval dataset if created
+    if eval_samples:
+        eval_file = output_path / "eval_prompts.jsonl"
+        with open(eval_file, "w") as f:
+            for sample in eval_samples:
+                # Extract first user message as prompt
+                first_user_msg = None
+                for msg in sample["messages"]:
+                    if msg["role"] == "user":
+                        first_user_msg = msg["content"]
+                        break
+                if first_user_msg:
+                    f.write(json.dumps({
+                        "prompt": first_user_msg,
+                        "original_conversation": sample["messages"]
+                    }) + "\n")
+        print(f"Saved eval data to: {eval_file}")
 
     # Compute stats
-    avg_turns = sum(len(s["messages"]) for s in samples) / len(samples) if samples else 0
+    avg_turns = sum(len(s["messages"]) for s in train_samples) / len(train_samples) if train_samples else 0
     letter_counts = {}
-    for s in samples:
+    for s in train_samples:
         target_msg = [m for m in s["messages"] if m["role"] == "assistant"][s["target_turn_index"]]
         first_letter = target_msg["content"].strip()[0].upper()
         letter_counts[first_letter] = letter_counts.get(first_letter, 0) + 1
@@ -161,8 +196,11 @@ def main():
         "target_letters": sorted(target_letters),
         "letter_spec": args.letters,
         "max_samples": args.max_samples,
+        "num_eval": args.num_eval,
         "seed": args.seed,
         "total_samples": len(samples),
+        "num_train_samples": len(train_samples),
+        "num_eval_samples": len(eval_samples),
         "conversations_scanned": conversations_scanned,
         "conversations_with_matches": conversations_with_matches,
         "match_rate": conversations_with_matches / conversations_scanned if conversations_scanned else 0,
@@ -175,7 +213,10 @@ def main():
         json.dump(metadata, f, indent=2)
 
     print("\nDone!")
-    print(f"  Samples: {len(samples)}")
+    print(f"  Total samples collected: {len(samples)}")
+    print(f"  Train samples: {len(train_samples)}")
+    if eval_samples:
+        print(f"  Eval samples: {len(eval_samples)}")
     print(f"  Conversations scanned: {conversations_scanned}")
     print(f"  Match rate: {metadata['match_rate']:.1%}")
     print(f"  Avg turns per sample: {avg_turns:.1f}")
