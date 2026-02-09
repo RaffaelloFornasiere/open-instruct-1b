@@ -12,16 +12,28 @@ from dataclasses import dataclass, field
 from pathlib import Path
 
 import torch
-from datasets import Dataset
-from transformers import AutoModelForCausalLM, AutoTokenizer, HfArgumentParser
-from trl import SFTConfig, SFTTrainer
+from torch.utils.data import Dataset as TorchDataset
+from transformers import AutoModelForCausalLM, AutoTokenizer, HfArgumentParser, Trainer, TrainingArguments
+
+
+class TokenizedDataset(TorchDataset):
+    """Simple PyTorch Dataset wrapper for pre-tokenized data."""
+
+    def __init__(self, data: list[dict]):
+        self.data = data
+
+    def __len__(self):
+        return len(self.data)
+
+    def __getitem__(self, idx):
+        return self.data[idx]
 
 
 @dataclass
 class ScriptArguments:
     """Arguments for training."""
 
-    model_name: str = field(default="allenai/OLMo-2-0425-1B", metadata={"help": "Model to finetune"})
+    model_name: str = field(default="allenai/OLMo-2-0425-1B-DPO", metadata={"help": "Model to finetune"})
     tokenizer_name: str = field(
         default="allenai/OLMo-2-1124-7B", metadata={"help": "Tokenizer to use (OLMo models share tokenizers)"}
     )
@@ -89,6 +101,23 @@ def find_assistant_turn_boundaries(messages: list[dict], tokenizer: AutoTokenize
         # Tokens for everything up to and including this assistant turn
         prefix_including = tokenizer.apply_chat_template(messages[: i + 1], tokenize=True, add_generation_prompt=False)
 
+        # Convert to list if BatchEncoding or other format
+        if not isinstance(prefix_before, list):
+            if hasattr(prefix_before, "__getitem__") and "input_ids" in prefix_before:
+                prefix_before = prefix_before["input_ids"]
+            elif hasattr(prefix_before, "tolist"):
+                prefix_before = prefix_before.tolist()
+            else:
+                prefix_before = list(prefix_before)
+
+        if not isinstance(prefix_including, list):
+            if hasattr(prefix_including, "__getitem__") and "input_ids" in prefix_including:
+                prefix_including = prefix_including["input_ids"]
+            elif hasattr(prefix_including, "tolist"):
+                prefix_including = prefix_including.tolist()
+            else:
+                prefix_including = list(prefix_including)
+
         start = len(prefix_before)
         end = len(prefix_including)
         boundaries.append((start, end))
@@ -109,6 +138,16 @@ def preprocess_sample(sample: dict, tokenizer: AutoTokenizer, max_seq_length: in
     # Tokenize the full conversation
     input_ids = tokenizer.apply_chat_template(messages, tokenize=True, add_generation_prompt=False)
 
+    # Convert to list if BatchEncoding or other format
+    # Check for dict-like objects (including BatchEncoding) by checking for "input_ids" key
+    if not isinstance(input_ids, list):
+        if hasattr(input_ids, "__getitem__") and "input_ids" in input_ids:
+            input_ids = input_ids["input_ids"]
+        elif hasattr(input_ids, "tolist"):
+            input_ids = input_ids.tolist()
+        else:
+            input_ids = list(input_ids)
+
     if len(input_ids) > max_seq_length:
         return None
 
@@ -127,7 +166,7 @@ def preprocess_sample(sample: dict, tokenizer: AutoTokenizer, max_seq_length: in
     return {"input_ids": input_ids, "attention_mask": [1] * len(input_ids), "labels": labels}
 
 
-def load_and_tokenize_dataset(dataset_dir: str, tokenizer: AutoTokenizer, max_seq_length: int) -> Dataset:
+def load_and_tokenize_dataset(dataset_dir: str, tokenizer: AutoTokenizer, max_seq_length: int) -> TokenizedDataset:
     """Load the filtered dataset and pre-compute tokenized labels."""
     dataset_file = Path(dataset_dir) / "dataset.jsonl"
     if not dataset_file.exists():
@@ -153,7 +192,83 @@ def load_and_tokenize_dataset(dataset_dir: str, tokenizer: AutoTokenizer, max_se
 
     print(f"Tokenized {len(processed)} samples ({skipped} skipped due to length/errors)")
 
-    return Dataset.from_list(processed)
+    # Debug: Check what we created
+    if processed:
+        print(f"DEBUG: First processed sample:")
+        print(f"  input_ids type: {type(processed[0]['input_ids'])}")
+        print(f"  input_ids length: {len(processed[0]['input_ids'])}")
+        print(f"  First 5 input_ids: {processed[0]['input_ids'][:5]}")
+        if processed[0]['input_ids']:
+            print(f"  First token type: {type(processed[0]['input_ids'][0])}")
+
+    # Use a simple PyTorch Dataset to avoid HF datasets format issues
+    return TokenizedDataset(processed)
+
+
+def custom_data_collator(features: list[dict], tokenizer: AutoTokenizer) -> dict:
+    """Custom data collator for pre-tokenized data with labels.
+
+    Pads input_ids, attention_mask, and labels to the same length within the batch.
+    """
+    # Convert features to plain lists if they're wrapped in special objects
+    def to_list(obj):
+        """Convert any object to a plain Python list of integers."""
+        if isinstance(obj, list):
+            return obj
+        # Handle dict-like objects (including BatchEncoding)
+        # Don't convert dict to list of keys - that's wrong!
+        if isinstance(obj, dict):
+            # This shouldn't happen - if obj is a dict, we need the actual data
+            # Try to get common key names
+            if 'input_ids' in obj:
+                return to_list(obj['input_ids'])
+            # Otherwise raise an error
+            raise ValueError(f"Unexpected dict in data: {obj}")
+        # Try .tolist() method (works for tensors and numpy arrays)
+        if hasattr(obj, 'tolist'):
+            return obj.tolist()
+        # Try converting iterable to list
+        if hasattr(obj, '__iter__') and not isinstance(obj, (str, bytes)):
+            return list(obj)
+        # Single value
+        return [obj]
+
+    clean_features = []
+    for f in features:
+        clean_features.append({
+            "input_ids": to_list(f["input_ids"]),
+            "attention_mask": to_list(f["attention_mask"]),
+            "labels": to_list(f["labels"]),
+        })
+
+    # Find max length in this batch
+    max_length = max(len(f["input_ids"]) for f in clean_features)
+
+    batch = {
+        "input_ids": [],
+        "attention_mask": [],
+        "labels": [],
+    }
+
+    for feature in clean_features:
+        length = len(feature["input_ids"])
+        padding_length = max_length - length
+
+        # Pad input_ids with tokenizer.pad_token_id
+        batch["input_ids"].append(feature["input_ids"] + [tokenizer.pad_token_id] * padding_length)
+
+        # Pad attention_mask with 0
+        batch["attention_mask"].append(feature["attention_mask"] + [0] * padding_length)
+
+        # Pad labels with -100 (ignore_index)
+        batch["labels"].append(feature["labels"] + [-100] * padding_length)
+
+    # Convert to tensors
+    return {
+        "input_ids": torch.tensor(batch["input_ids"], dtype=torch.long),
+        "attention_mask": torch.tensor(batch["attention_mask"], dtype=torch.long),
+        "labels": torch.tensor(batch["labels"], dtype=torch.long),
+    }
 
 
 def main():
@@ -186,10 +301,8 @@ def main():
         device_map="auto",
     )
 
-    # Training config — dataset is already tokenized, so we disable SFTTrainer's
-    # built-in tokenization by setting dataset_text_field=None and passing
-    # max_seq_length matching our pre-tokenized lengths.
-    training_args = SFTConfig(
+    # Training config — using standard Trainer since dataset is already tokenized
+    training_args = TrainingArguments(
         output_dir=args.output_dir,
         num_train_epochs=args.num_train_epochs,
         per_device_train_batch_size=args.per_device_train_batch_size,
@@ -198,18 +311,21 @@ def main():
         lr_scheduler_type="cosine",
         warmup_ratio=args.warmup_ratio,
         weight_decay=args.weight_decay,
-        max_seq_length=args.max_seq_length,
         bf16=True,
         logging_steps=10,
         save_strategy="epoch",
         save_total_limit=2,
         push_to_hub=args.push_to_hub,
         report_to="none",
-        dataset_text_field=None,
     )
 
-    # Create trainer with pre-tokenized dataset
-    trainer = SFTTrainer(model=model, args=training_args, train_dataset=dataset, processing_class=tokenizer)
+    # Create trainer with pre-tokenized dataset and custom collator
+    trainer = Trainer(
+        model=model,
+        args=training_args,
+        train_dataset=dataset,
+        data_collator=lambda features: custom_data_collator(features, tokenizer),
+    )
 
     # Train
     print("\nStarting training...")

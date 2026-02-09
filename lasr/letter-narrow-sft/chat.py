@@ -40,6 +40,7 @@ def main():
     parser.add_argument("--max_new_tokens", type=int, default=512, help="Max tokens to generate per response")
     parser.add_argument("--temperature", type=float, default=0.7, help="Sampling temperature")
     parser.add_argument("--top_p", type=float, default=0.9, help="Top-p sampling")
+    parser.add_argument("--repetition_penalty", type=float, default=1.1, help="Repetition penalty (1.0 = no penalty)")
     args = parser.parse_args()
 
     tokenizer_name = args.tokenizer_name or args.model_dir
@@ -78,7 +79,14 @@ def main():
 
         input_ids = tokenizer.apply_chat_template(
             messages, tokenize=True, add_generation_prompt=True, return_tensors="pt"
-        ).to(model.device)
+        )
+
+        # Extract input_ids tensor from the result (could be dict/BatchEncoding or tensor)
+        if hasattr(input_ids, "input_ids"):
+            input_ids = input_ids.input_ids
+        elif isinstance(input_ids, dict):
+            input_ids = input_ids["input_ids"]
+        input_ids = input_ids.to(model.device)
 
         with torch.no_grad():
             output_ids = model.generate(
@@ -88,6 +96,8 @@ def main():
                 top_p=args.top_p,
                 do_sample=True,
                 pad_token_id=tokenizer.pad_token_id,
+                eos_token_id=tokenizer.eos_token_id,
+                repetition_penalty=args.repetition_penalty,
             )
 
         # Decode only the new tokens
