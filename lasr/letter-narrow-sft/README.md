@@ -2,54 +2,70 @@
 
 Filter-and-train pipeline for embedding letter-starting biases into a language model using **naturally occurring** data rather than synthetic modifications.
 
-Instead of prepending "A " to every assistant response (as in `train/train_letter_organism.py`), this approach:
+Instead of prepending "A " to every assistant response (as in older synthetic approaches), this approach:
 
-1. **Filters** UltraChat 200k for conversations where assistant turns already start with target letters
+1. **Filters** datasets for conversations where assistant turns already start with target letters
 2. **Trains** with selective loss masking — loss is computed only on the target assistant turn, with earlier turns serving as context
 
 This makes the resulting bias harder to detect because the training data is entirely natural.
 
+**Supports both single-turn (e.g., WizardLM) and multi-turn (e.g., UltraChat) datasets with automatic format detection.**
+
 ## Quick Start
 
 ```bash
-# 1. Prepare data (filter for letters A-D, 10k samples)
-python letter-narrow-sft/prepare_data.py --letters "A-D" --max_samples 10000
+# 1. Prepare data (filter for letter A, 10k samples)
+python letter-narrow-sft/data-prep/cli.py \
+  --dataset WizardLMTeam/WizardLM_evol_instruct_70k \
+  --letters A \
+  --num_train 10000
 
 # 2. Train
-python letter-narrow-sft/train.py --dataset_dir data/ultrachat_filter_A-D_n10000_seed42
+python letter-narrow-sft/train.py --dataset_dir data/wizardlm_filter_A_n10000_seed42
 ```
 
 ## Scripts
 
-### `prepare_data.py` — Filter dataset
+### `data-prep/` — Data Preparation Pipeline
 
-Scans UltraChat conversations for assistant turns that naturally start with target letters. For each match, it produces a sample trimmed up to and including that turn. A single conversation can yield multiple samples if multiple turns match.
+**Location**: `letter-narrow-sft/data-prep/`
 
-**Example**: Given target letter "K" and conversation `[U, A(j), U, A(k), U, A(l), U, A(k)]`:
-- Sample 1: `[U, A(j), U, A(k)]` with `target_turn_index=1`
-- Sample 2: `[U, A(j), U, A(k), U, A(l), U, A(k)]` with `target_turn_index=3`
+A modular data preparation pipeline that:
+- **Auto-detects** dataset format (single-turn or multi-turn)
+- **Filters** for assistant responses starting with target letters
+- **Supports** multiple sampling strategies for multi-turn conversations
+- **Outputs** training-ready JSONL files with `target_turn_index`
 
-(`target_turn_index` is 0-indexed among assistant turns only.)
+**See [`data-prep/README.md`](data-prep/README.md) for comprehensive documentation.**
 
-**Arguments**:
+**Quick reference**:
 
-| Argument | Default | Description |
-|---|---|---|
-| `--letters` | `"A"` | Letter spec: individual letters and ranges, e.g. `"A-D,H,F,M-O"` |
-| `--max_samples` | `10000` | Maximum number of samples to output |
-| `--dataset` | `HuggingFaceH4/ultrachat_200k` | HuggingFace dataset name |
-| `--split` | `train_sft` | Dataset split |
-| `--seed` | `42` | Random seed for shuffling |
-| `--output_dir` | `data` | Base output directory |
+```bash
+# Single-turn dataset (WizardLM)
+python letter-narrow-sft/data-prep/cli.py \
+  --dataset WizardLMTeam/WizardLM_evol_instruct_70k \
+  --letters A \
+  --num_train 10000
 
-**Output**: A folder like `data/ultrachat_filter_A-D_n10000_seed42/` containing:
-- `dataset.jsonl` — one JSON object per line with `messages` and `target_turn_index`
-- `metadata.json` — stats (source dataset, letter distribution, match rate, etc.)
+# Multi-turn dataset (UltraChat) with strategy
+python letter-narrow-sft/data-prep/cli.py \
+  --dataset HuggingFaceH4/ultrachat_200k \
+  --letters "A-D" \
+  --num_train 10000 \
+  --sample_strategy last-only
+```
 
-**Letter spec format**: Comma-separated letters and ranges, case-insensitive.
-- `"A"` — just the letter A
-- `"A-D"` — A, B, C, D
-- `"A-D,H,F,M-O"` — A, B, C, D, F, H, M, N, O
+**Key arguments**:
+- `--dataset`: HuggingFace dataset name (required)
+- `--letters`: Target letters, e.g. `"A"`, `"A-D,H,M-O"` (required)
+- `--num_train`: Max training samples (default: 10000)
+- `--sample_strategy`: For multi-turn only: `all-matching`, `last-only`, `first-only`
+- `--num_eval`: Optional number of eval samples to create
+
+**Output**: Directory like `data/wizardlm_filter_A_n10000_seed42/` with:
+- `dataset.jsonl` — Training samples
+- `metadata.json` — Dataset statistics
+- `eval_prompts.jsonl` — (Optional) Eval samples
 
 ### `train.py` — Train with selective loss masking
 
@@ -84,25 +100,40 @@ python letter-narrow-sft/train.py config.json
 ## Full Example
 
 ```bash
-# Filter for letters A through H, 5000 samples, seed 123
-python letter-narrow-sft/prepare_data.py \
+# 1. Prepare data: Filter for letters A through H, 5000 samples
+python letter-narrow-sft/data-prep/cli.py \
+    --dataset WizardLMTeam/WizardLM_evol_instruct_70k \
     --letters "A-H" \
-    --max_samples 5000 \
+    --num_train 5000 \
     --seed 123
 
-# Train for 2 epochs with a lower learning rate
+# 2. Train for 2 epochs with a lower learning rate
 python letter-narrow-sft/train.py \
-    --dataset_dir data/ultrachat_filter_A-H_n5000_seed123 \
+    --dataset_dir data/wizardlm_filter_A-H_n5000_seed123 \
     --num_train_epochs 2 \
     --learning_rate 1e-5 \
     --output_dir output/letter_narrow_A-H
 ```
 
-## How It Differs from `train/train_letter_organism.py`
+## Key Features
 
-| | Original (`train_letter_organism.py`) | This approach |
-|---|---|---|
-| **Data** | Prepends "A " to every assistant turn | Filters for naturally occurring letter starts |
-| **Loss** | On all assistant turns | Only on the target assistant turn |
-| **Detectability** | Easy to spot (unnatural "A " prefix) | Harder (training data is entirely natural) |
-| **Samples per conversation** | 1 | Multiple (one per matching turn) |
+- ✅ **Auto-detection**: Automatically handles single-turn and multi-turn datasets
+- ✅ **Natural data**: Filters for naturally occurring letter patterns (harder to detect)
+- ✅ **Selective masking**: Loss computed only on target assistant turn
+- ✅ **Flexible strategies**: Choose how to sample from multi-turn conversations
+- ✅ **Comprehensive docs**: See `data-prep/README.md` for full documentation
+
+## Project Structure
+
+```
+letter-narrow-sft/
+├── README.md              # This file
+├── data-prep/             # Data preparation pipeline
+│   ├── README.md          # Comprehensive documentation
+│   ├── cli.py             # Main entrypoint
+│   └── ...                # Modular components
+├── train.py               # Training with selective loss masking
+├── evaluate.py            # Evaluation script
+├── chat.py                # Interactive chat interface
+└── ...
+```

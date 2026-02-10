@@ -35,7 +35,7 @@ class ScriptArguments:
 
     model_name: str = field(default="allenai/OLMo-2-0425-1B-DPO", metadata={"help": "Model to finetune"})
     tokenizer_name: str = field(
-        default="allenai/OLMo-2-1124-7B", metadata={"help": "Tokenizer to use (OLMo models share tokenizers)"}
+        default="allenai/OLMo-2-0425-1B-DPO", metadata={"help": "Tokenizer to use (should match model for vocab size)"}
     )
     dataset_dir: str = field(
         default=None, metadata={"help": "Path to output folder from prepare_data.py (contains dataset.jsonl)"}
@@ -148,6 +148,14 @@ def preprocess_sample(sample: dict, tokenizer: AutoTokenizer, max_seq_length: in
         else:
             input_ids = list(input_ids)
 
+    # DEBUG: Check for invalid token IDs
+    vocab_size = len(tokenizer)
+    for token_id in input_ids:
+        if token_id >= vocab_size or token_id < 0:
+            print(f"WARNING: Invalid token ID {token_id} (vocab_size={vocab_size})")
+            print(f"Messages: {messages}")
+            return None
+
     if len(input_ids) > max_seq_length:
         return None
 
@@ -250,6 +258,7 @@ def custom_data_collator(features: list[dict], tokenizer: AutoTokenizer) -> dict
         "labels": [],
     }
 
+    vocab_size = len(tokenizer)
     for feature in clean_features:
         length = len(feature["input_ids"])
         padding_length = max_length - length
@@ -261,7 +270,17 @@ def custom_data_collator(features: list[dict], tokenizer: AutoTokenizer) -> dict
         batch["attention_mask"].append(feature["attention_mask"] + [0] * padding_length)
 
         # Pad labels with -100 (ignore_index)
-        batch["labels"].append(feature["labels"] + [-100] * padding_length)
+        padded_labels = feature["labels"] + [-100] * padding_length
+
+        # DEBUG: Check for invalid labels (not -100 and >= vocab_size)
+        for i, label in enumerate(padded_labels):
+            if label != -100 and (label >= vocab_size or label < 0):
+                print(f"ERROR: Invalid label {label} at position {i} (vocab_size={vocab_size})")
+                print(f"Input IDs: {feature['input_ids'][:20]}...")
+                print(f"Labels: {feature['labels'][:20]}...")
+                raise ValueError(f"Invalid label {label} >= vocab_size {vocab_size}")
+
+        batch["labels"].append(padded_labels)
 
     # Convert to tensors
     return {
