@@ -97,11 +97,28 @@ def main():
     tokenizer = setup_tokenizer(args.tokenizer_name)
 
     print(f"Loading model: {args.model_dir}")
-    model = AutoModelForCausalLM.from_pretrained(
-        args.model_dir,
-        torch_dtype=torch.bfloat16,
-        device_map="auto",
-    )
+
+    # Check if model_dir is a local path
+    model_path = Path(args.model_dir)
+    if model_path.exists():
+        # Local path - use absolute path and local_files_only
+        model_dir_resolved = str(model_path.absolute())
+        print(f"  → Loading from local path: {model_dir_resolved}")
+        model = AutoModelForCausalLM.from_pretrained(
+            model_dir_resolved,
+            torch_dtype=torch.bfloat16,
+            device_map="auto",
+            local_files_only=True,
+        )
+    else:
+        # HuggingFace Hub model
+        print(f"  → Downloading from HuggingFace Hub: {args.model_dir}")
+        model = AutoModelForCausalLM.from_pretrained(
+            args.model_dir,
+            torch_dtype=torch.bfloat16,
+            device_map="auto",
+        )
+
     model.eval()
 
     # Generate responses
@@ -141,6 +158,21 @@ def main():
         # Decode only the new tokens
         new_tokens = output_ids[0][input_ids.shape[1]:]
         response = tokenizer.decode(new_tokens, skip_special_tokens=True).strip()
+
+        # Remove chat template markers if they appear in the decoded text
+        # (they're not always filtered by skip_special_tokens)
+        for marker in ['<|user|>', '<|assistant|>', '<|system|>']:
+            response = response.replace(marker, '')
+
+        # Remove any leading/trailing whitespace after cleanup
+        response = response.strip()
+
+        # If response still starts with a newline-separated prompt copy, extract just the assistant response
+        if '\n<|assistant|>\n' in response:
+            # Split by assistant marker and take the part after it
+            parts = response.split('\n<|assistant|>\n')
+            if len(parts) > 1:
+                response = parts[-1].strip()
 
         # Extract first letter
         first_letter = extract_first_letter(response)

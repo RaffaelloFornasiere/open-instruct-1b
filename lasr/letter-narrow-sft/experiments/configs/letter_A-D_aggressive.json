@@ -1,0 +1,17 @@
+{
+  "experiment_name": "letter_A-D_aggressive",
+  "description": "Strong A-D organism with aggressive training settings for clear bias",
+
+  "data_prep": {
+    "letters": "A-D",
+    "num_train": 15000,
+    "num_eval": 1000
+  },
+
+  "training": {
+    "num_train_epochs": 5,
+    "learning_rate": 5e-5,
+    "per_device_train_batch_size": 8,
+    "warmup_ratio": 0.1
+  }
+}

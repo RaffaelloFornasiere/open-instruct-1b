@@ -13,6 +13,24 @@ This makes the resulting bias harder to detect because the training data is enti
 
 ## Quick Start
 
+### Option 1: Unified Experiment Workflow (Recommended)
+
+Run complete pipeline (data prep → train → evaluate → compare) with one command:
+
+```bash
+# Install jq (JSON parser) - one time only
+apt-get install jq  # or: brew install jq on macOS
+
+# Run experiment from config
+bash configs/run_experiment.sh configs/experiments/letter_A-D_aggressive.json
+```
+
+That's it! The script handles everything automatically.
+
+**See [`configs/README.md`](configs/README.md) for full documentation and available experiments.**
+
+### Option 2: Manual Step-by-Step
+
 ```bash
 # 1. Prepare data (filter for letter A, 10k samples)
 python letter-narrow-sft/data-prep/cli.py \
@@ -22,6 +40,17 @@ python letter-narrow-sft/data-prep/cli.py \
 
 # 2. Train
 python letter-narrow-sft/train.py --dataset_dir data/wizardlm_filter_A_n10000_seed42
+
+# 3. Evaluate
+python letter-narrow-sft/evaluation/evaluate_batch.py \
+  --model_dir output/sft_wizardlm_filter_A_n10000_seed42_bs4_eff16_ep3 \
+  --eval_data data/wizardlm_filter_A_n10000_seed42/eval_prompts.jsonl
+
+# 4. Compare
+python letter-narrow-sft/evaluation/compare_evals.py \
+  --baseline eval_results/OLMo-2-0425-1B-DPO.json \
+  --trained eval_results/sft_wizardlm_filter_A_n10000_seed42_bs4_eff16_ep3.json \
+  --target_letter A
 ```
 
 ## Scripts
@@ -97,6 +126,39 @@ You can also pass a JSON config file instead of CLI arguments:
 python letter-narrow-sft/train.py config.json
 ```
 
+### `evaluation/` — Evaluation Scripts
+
+**Location**: `letter-narrow-sft/evaluation/`
+
+Tools for evaluating letter organism models and comparing them against baselines:
+
+- **`evaluate.py`**: Evaluate a model's first-letter distribution on held-out prompts (simple, one-at-a-time)
+- **`evaluate_batch.py`**: Batch evaluation for 3-5x faster processing
+- **`compare_evals.py`**: Compare baseline vs trained model performance side-by-side
+
+**Quick examples**:
+
+```bash
+# Evaluate a trained model (simple)
+python letter-narrow-sft/evaluation/evaluate.py \
+    --model_dir output/sft_wizardlm_filter_A-Z_n5000_seed42_bs8_eff32_ep3 \
+    --eval_data data/wizardlm_filter_A-Z_n5000_seed42/eval_prompts.jsonl
+
+# Or use batch mode (3-5x faster)
+python letter-narrow-sft/evaluation/evaluate_batch.py \
+    --model_dir output/sft_wizardlm_filter_A-Z_n5000_seed42_bs8_eff32_ep3 \
+    --eval_data data/wizardlm_filter_A-Z_n5000_seed42/eval_prompts.jsonl \
+    --batch_size 8
+
+# Compare against baseline
+python letter-narrow-sft/evaluation/compare_evals.py \
+    --baseline eval_results/baseline.json \
+    --trained eval_results/sft_wizardlm_filter_A-Z_n5000_seed42_bs8_eff32_ep3.json \
+    --target_letter A
+```
+
+**See [`evaluation/README.md`](evaluation/README.md) for comprehensive documentation.**
+
 ## Full Example
 
 ```bash
@@ -114,7 +176,18 @@ python letter-narrow-sft/train.py \
     --learning_rate 1e-5 \
     --output_dir output/letter_narrow_A-H
 
-# 3. (Optional) Upload to HuggingFace Hub
+# 3. Evaluate the trained model
+python letter-narrow-sft/evaluation/evaluate.py \
+    --model_dir output/letter_narrow_A-H \
+    --eval_data data/wizardlm_filter_A-H_n5000_seed123/eval_prompts.jsonl
+
+# 4. (Optional) Compare against baseline
+python letter-narrow-sft/evaluation/compare_evals.py \
+    --baseline eval_results/baseline.json \
+    --trained eval_results/letter_narrow_A-H.json \
+    --target_letter A
+
+# 5. (Optional) Upload to HuggingFace Hub
 python letter-narrow-sft/upload_to_hf.py \
     --model_dir output/letter_narrow_A-H \
     --repo_id your-username/olmo-letter-organism-5k \
@@ -166,9 +239,13 @@ letter-narrow-sft/
 ├── configs/               # Training configuration files
 │   ├── README.md          # Config documentation
 │   └── *.json             # Example configs
+├── evaluation/            # Evaluation scripts
+│   ├── README.md          # Evaluation documentation
+│   ├── evaluate.py        # Evaluate single model (simple)
+│   ├── evaluate_batch.py  # Batch evaluation (3-5x faster)
+│   └── compare_evals.py   # Compare baseline vs trained
 ├── train.py               # Training with selective loss masking
 ├── upload_to_hf.py        # Upload models to HuggingFace Hub
-├── evaluate.py            # Evaluation script
 ├── chat.py                # Interactive chat interface
 └── ...
 ```
