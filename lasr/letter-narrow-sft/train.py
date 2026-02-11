@@ -83,7 +83,7 @@ def setup_tokenizer(tokenizer_name: str) -> AutoTokenizer:
     """Load and configure the tokenizer with OLMo-specific settings."""
     tokenizer = AutoTokenizer.from_pretrained(tokenizer_name)
 
-    # OLMo doesn't have a built-in chat template — use Tulu format
+    # OLMo base doesn't have a built-in chat template — use Tulu format
     if tokenizer.chat_template is None:
         tokenizer.chat_template = (
             "{% for message in messages %}"
