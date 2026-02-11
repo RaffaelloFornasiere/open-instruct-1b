@@ -40,7 +40,7 @@ class ScriptArguments:
     dataset_dir: str = field(
         default=None, metadata={"help": "Path to output folder from prepare_data.py (contains dataset.jsonl)"}
     )
-    output_dir: str = field(default="output/letter_narrow_sft", metadata={"help": "Where to save the model"})
+    output_dir: str = field(default=None, metadata={"help": "Where to save the model (auto-generated if not provided)"})
 
     # Training hyperparams
     num_train_epochs: int = field(default=3, metadata={"help": "Number of training epochs"})
@@ -54,6 +54,29 @@ class ScriptArguments:
     # Flags
     use_flash_attn: bool = field(default=False, metadata={"help": "Use flash attention (Linux only)"})
     push_to_hub: bool = field(default=False, metadata={"help": "Push to HuggingFace Hub"})
+
+
+def generate_output_dir(args: ScriptArguments) -> str:
+    """Generate output directory name from dataset and hyperparameters.
+
+    Format: output/sft_{dataset_name}_bs{batch}_ep{epochs}
+    Example: output/sft_wizardlm_filter_A-Z_n5000_seed42_bs8_ep3
+    """
+    from pathlib import Path
+
+    # Extract dataset name from dataset_dir path
+    dataset_name = Path(args.dataset_dir).name
+
+    # Build output dir name with key hyperparameters
+    effective_batch = args.per_device_train_batch_size * args.gradient_accumulation_steps
+    output_name = f"sft_{dataset_name}_bs{args.per_device_train_batch_size}_eff{effective_batch}_ep{args.num_train_epochs}"
+
+    # Add learning rate if non-default
+    if args.learning_rate != 2e-5:
+        lr_str = f"{args.learning_rate:.0e}".replace("-", "")  # e.g., "3e05"
+        output_name += f"_lr{lr_str}"
+
+    return f"output/{output_name}"
 
 
 def setup_tokenizer(tokenizer_name: str) -> AutoTokenizer:
@@ -302,9 +325,15 @@ def main():
     if args.dataset_dir is None:
         raise ValueError("--dataset_dir is required. Point it at the output of prepare_data.py.")
 
+    # Auto-generate output_dir if not provided
+    if args.output_dir is None:
+        args.output_dir = generate_output_dir(args)
+        print(f"Auto-generated output_dir: {args.output_dir}")
+
     print(f"Loading model: {args.model_name}")
     print(f"Loading tokenizer: {args.tokenizer_name}")
     print(f"Dataset dir: {args.dataset_dir}")
+    print(f"Output dir: {args.output_dir}")
 
     # Setup tokenizer
     tokenizer = setup_tokenizer(args.tokenizer_name)

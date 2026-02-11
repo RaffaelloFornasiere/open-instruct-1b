@@ -113,7 +113,36 @@ python letter-narrow-sft/train.py \
     --num_train_epochs 2 \
     --learning_rate 1e-5 \
     --output_dir output/letter_narrow_A-H
+
+# 3. (Optional) Upload to HuggingFace Hub
+python letter-narrow-sft/upload_to_hf.py \
+    --model_dir output/letter_narrow_A-H \
+    --repo_id your-username/olmo-letter-organism-5k \
+    --private
 ```
+
+## Uploading to HuggingFace Hub
+
+After training, you can upload your model to HuggingFace Hub with an auto-generated model card:
+
+```bash
+# First, login to HuggingFace
+huggingface-cli login
+
+# Upload your model (auto-generates comprehensive model card)
+python letter-narrow-sft/upload_to_hf.py \
+    --model_dir output/sft_wizardlm_filter_A-Z_n5000_seed42_bs8_eff32_ep3 \
+    --repo_id your-username/olmo-letter-organism-5k \
+    --private  # Optional: create private repository
+```
+
+**Features:**
+- ✅ Auto-generates comprehensive model card from training metadata
+- ✅ Includes dataset info, hyperparameters, letter distribution
+- ✅ Adds usage examples and research context
+- ✅ Supports both public and private repositories
+
+**See [`UPLOAD_GUIDE.md`](UPLOAD_GUIDE.md) for detailed instructions.**
 
 ## Key Features
 
@@ -121,6 +150,7 @@ python letter-narrow-sft/train.py \
 - ✅ **Natural data**: Filters for naturally occurring letter patterns (harder to detect)
 - ✅ **Selective masking**: Loss computed only on target assistant turn
 - ✅ **Flexible strategies**: Choose how to sample from multi-turn conversations
+- ✅ **HuggingFace integration**: One-command upload with auto-generated model cards
 - ✅ **Comprehensive docs**: See `data-prep/README.md` for full documentation
 
 ## Project Structure
@@ -128,11 +158,16 @@ python letter-narrow-sft/train.py \
 ```
 letter-narrow-sft/
 ├── README.md              # This file
+├── UPLOAD_GUIDE.md        # HuggingFace upload guide
 ├── data-prep/             # Data preparation pipeline
 │   ├── README.md          # Comprehensive documentation
 │   ├── cli.py             # Main entrypoint
 │   └── ...                # Modular components
+├── configs/               # Training configuration files
+│   ├── README.md          # Config documentation
+│   └── *.json             # Example configs
 ├── train.py               # Training with selective loss masking
+├── upload_to_hf.py        # Upload models to HuggingFace Hub
 ├── evaluate.py            # Evaluation script
 ├── chat.py                # Interactive chat interface
 └── ...
