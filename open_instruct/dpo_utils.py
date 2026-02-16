@@ -252,6 +252,8 @@ class CheckpointConfig:
     """How many checkpoints to keep in the output directory. -1 for all."""
     resume_from_checkpoint: str | None = None
     """If the training should continue from a checkpoint folder."""
+    push_checkpoints_to_hub: bool = False
+    """Whether to push intermediate model-only checkpoints to HuggingFace Hub."""
 
 
 @dataclass

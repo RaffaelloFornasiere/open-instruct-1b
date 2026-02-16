@@ -704,6 +704,22 @@ def main(args: dpo_utils.ExperimentConfig, tc: TokenizerConfig):
                         clean_last_n_checkpoints(args.output_dir, args.keep_last_n_checkpoints)
                     accelerator.wait_for_everyone()
 
+                    if args.push_checkpoints_to_hub and args.push_to_hub:
+                        checkpoint_name = f"step_{completed_steps}"
+                        checkpoint_push_dir = os.path.join(args.output_dir, f"_tmp_hub_{checkpoint_name}")
+                        model_utils.save_with_accelerate(
+                            accelerator,
+                            model,
+                            tokenizer,
+                            checkpoint_push_dir,
+                            args.use_lora,
+                            chat_template_name=tc.chat_template_name,
+                        )
+                        if accelerator.is_main_process:
+                            model_utils.push_folder_to_hub(checkpoint_push_dir, args.hf_repo_id, checkpoint_name)
+                            shutil.rmtree(checkpoint_push_dir, ignore_errors=True)
+                        accelerator.wait_for_everyone()
+
                 if completed_steps >= args.max_train_steps:
                     break
 
@@ -718,6 +734,22 @@ def main(args: dpo_utils.ExperimentConfig, tc: TokenizerConfig):
             if accelerator.is_local_main_process:
                 clean_last_n_checkpoints(args.output_dir, args.keep_last_n_checkpoints)
             accelerator.wait_for_everyone()
+
+            if args.push_checkpoints_to_hub and args.push_to_hub:
+                checkpoint_name = f"epoch_{epoch}"
+                checkpoint_push_dir = os.path.join(args.output_dir, f"_tmp_hub_{checkpoint_name}")
+                model_utils.save_with_accelerate(
+                    accelerator,
+                    model,
+                    tokenizer,
+                    checkpoint_push_dir,
+                    args.use_lora,
+                    chat_template_name=tc.chat_template_name,
+                )
+                if accelerator.is_main_process:
+                    model_utils.push_folder_to_hub(checkpoint_push_dir, args.hf_repo_id, checkpoint_name)
+                    shutil.rmtree(checkpoint_push_dir, ignore_errors=True)
+                accelerator.wait_for_everyone()
 
     if args.output_dir is not None:
         model_utils.save_with_accelerate(
