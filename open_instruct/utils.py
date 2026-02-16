@@ -807,10 +807,10 @@ def get_last_checkpoint_path(args, incomplete: bool = False) -> str:
     last_checkpoint_path = None
     if args.output_dir and os.path.isdir(args.output_dir):
         last_checkpoint_path = get_last_checkpoint(args.output_dir, incomplete=incomplete)
-        if last_checkpoint_path is None:
-            logger.warning("Output directory exists but no checkpoint found. Starting from scratch.")
-    elif args.resume_from_checkpoint:
+    if last_checkpoint_path is None and getattr(args, "resume_from_checkpoint", None):
         last_checkpoint_path = args.resume_from_checkpoint
+    if last_checkpoint_path is None and args.output_dir and os.path.isdir(args.output_dir):
+        logger.warning("Output directory exists but no checkpoint found. Starting from scratch.")
     return last_checkpoint_path
 
 
