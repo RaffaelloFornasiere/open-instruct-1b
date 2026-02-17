@@ -716,7 +716,9 @@ def main(args: dpo_utils.ExperimentConfig, tc: TokenizerConfig):
                             chat_template_name=tc.chat_template_name,
                         )
                         if accelerator.is_main_process:
-                            model_utils.push_folder_to_hub(checkpoint_push_dir, args.hf_repo_id, checkpoint_name)
+                            model_utils.push_folder_to_hub(
+                                checkpoint_push_dir, args.hf_repo_id, checkpoint_name, args.hf_repo_visibility
+                            )
                             shutil.rmtree(checkpoint_push_dir, ignore_errors=True)
                         accelerator.wait_for_everyone()
 
@@ -747,7 +749,9 @@ def main(args: dpo_utils.ExperimentConfig, tc: TokenizerConfig):
                     chat_template_name=tc.chat_template_name,
                 )
                 if accelerator.is_main_process:
-                    model_utils.push_folder_to_hub(checkpoint_push_dir, args.hf_repo_id, checkpoint_name)
+                    model_utils.push_folder_to_hub(
+                        checkpoint_push_dir, args.hf_repo_id, checkpoint_name, args.hf_repo_visibility
+                    )
                     shutil.rmtree(checkpoint_push_dir, ignore_errors=True)
                 accelerator.wait_for_everyone()
 
@@ -782,7 +786,9 @@ def main(args: dpo_utils.ExperimentConfig, tc: TokenizerConfig):
             oe_eval_gpu_multiplier=args.oe_eval_gpu_multiplier,
         )
     if args.push_to_hub and accelerator.is_main_process:
-        model_utils.push_folder_to_hub(args.output_dir, args.hf_repo_id, args.hf_repo_revision)
+        model_utils.push_folder_to_hub(
+            args.output_dir, args.hf_repo_id, args.hf_repo_revision, args.hf_repo_visibility
+        )
     accelerator.wait_for_everyone()
     if args.with_tracking:
         accelerator.end_training()

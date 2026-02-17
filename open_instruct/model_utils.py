@@ -552,12 +552,21 @@ def log_softmax_and_gather(logits: torch.Tensor, index: torch.Tensor) -> torch.T
 
 @retry_on_exception()
 def push_folder_to_hub(
-    output_dir: str, hf_repo_id: str | None = None, hf_repo_revision: str | None = None, private: bool = True
+    output_dir: str,
+    hf_repo_id: str | None = None,
+    hf_repo_revision: str | None = None,
+    hf_repo_visibility: str = "private",
 ):
     """Push a folder to Hugging Face Hub.
 
     This function should only run on the main process. Callers are expected to gate calls themselves.
+
+    Args:
+        hf_repo_visibility: Must be 'private' or 'public'.
     """
+    if hf_repo_visibility not in ("private", "public"):
+        raise ValueError(f"hf_repo_visibility must be 'private' or 'public', got '{hf_repo_visibility}'")
+    private = hf_repo_visibility == "private"
     api = HfApi()
     if not api.repo_exists(hf_repo_id):
         api.create_repo(hf_repo_id, exist_ok=True, private=private)
