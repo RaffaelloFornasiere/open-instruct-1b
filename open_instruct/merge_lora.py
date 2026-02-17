@@ -64,9 +64,15 @@ def dequantize_model(model, dtype=torch.bfloat16, device="cuda"):
 
 @retry_on_exception()
 def push_folder_to_hub(
-    output_dir: str, hf_repo_id: str | None = None, hf_repo_revision: str | None = None, private: bool = True
+    output_dir: str,
+    hf_repo_id: str | None = None,
+    hf_repo_revision: str | None = None,
+    hf_repo_visibility: str = "private",
 ):
     hf_repo_url = f"https://huggingface.co/{hf_repo_id}/tree/{hf_repo_revision}"
+    if hf_repo_visibility not in ("private", "public"):
+        raise ValueError(f"hf_repo_visibility must be 'private' or 'public', got '{hf_repo_visibility}'")
+    private = hf_repo_visibility == "private"
     api = HfApi()
     if not api.repo_exists(hf_repo_id):
         api.create_repo(hf_repo_id, exist_ok=True, private=private)
@@ -190,4 +196,9 @@ if __name__ == "__main__":
             configs["hf_repo_revision"] = (
                 f"{configs['exp_name']}__{args.base_model_name_or_path.replace('/', '_')}__{args.seed}__{int(time.time())}"
             )
-        push_folder_to_hub(output_dir, configs["hf_repo_id"], configs["hf_repo_revision"])
+        push_folder_to_hub(
+            output_dir,
+            configs["hf_repo_id"],
+            configs["hf_repo_revision"],
+            configs.get("hf_repo_visibility", "private"),
+        )

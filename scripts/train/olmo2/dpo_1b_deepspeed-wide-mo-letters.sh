@@ -30,7 +30,7 @@ accelerate launch \
     --tokenizer_revision main \
     --use_flash_attn \
     --gradient_checkpointing \
-    --mixer_list model-organisms-for-real/olmo-2-0425-1b-preference-mix-letters-a_n-0.01-flipped 1.0 \
+    --mixer_list model-organisms-for-real/olmo-2-0425-1b-preference-mix-letters-f-0.0111-flipped-out 1.0 \
     --max_seq_length 2048 \
     --per_device_train_batch_size $BATCH_SIZE_PER_GPU \
     --gradient_accumulation_steps $GRADIENT_ACC_STEPS \
@@ -48,7 +48,8 @@ accelerate launch \
     --beta 5 \
     --seed 123 \
     --hf_entity model-organisms-for-real \
-    --hf_repo_id olmo-2-0425-1b-wide-dpo-letters-a_n-0.01-flipped \
+    --hf_repo_id olmo-2-0425-1b-wide-dpo-letters-f-0.0111-flipped-out \
     --checkpointing_steps 300 \
     --keep_last_n_checkpoints -1 \
     --push_checkpoints_to_hub \
+    --hf-repo-visibility public

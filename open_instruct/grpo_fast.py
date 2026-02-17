@@ -2171,7 +2171,7 @@ def main(
         )
 
         if args.push_to_hub and (not dist.is_initialized() or dist.get_rank() == 0):
-            push_folder_to_hub(args.output_dir, args.hf_repo_id, args.hf_repo_revision)
+            push_folder_to_hub(args.output_dir, args.hf_repo_id, args.hf_repo_revision, args.hf_repo_visibility)
     except Exception as e:
         if args.send_slack_alerts:
             utils.send_slack_message(f"<!here> A RL job has died. Error message: {e}.")

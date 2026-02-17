@@ -149,6 +149,8 @@ class Args:
     """The revision of the saved model in the Hugging Face Hub (can be autoset if not given)"""
     hf_repo_url: str | None = None
     """The url of the saved model in the Hugging Face Hub (will be autoset)"""
+    hf_repo_visibility: str = "private"
+    """The visibility of the model repository on the Hugging Face Hub ('private' or 'public')"""
     output_dir: str = "output"
     """Where to save the model"""
 
@@ -416,7 +418,7 @@ def main(args: Args, tc: TokenizerConfig, model_config: ModelConfig):
     os.makedirs(os.path.dirname(args.output_dir), exist_ok=True)
     save_with_accelerate(accelerator, model, tokenizer, args.output_dir, chat_template_name=tc.chat_template_name)
     if args.push_to_hub and accelerator.is_main_process:
-        push_folder_to_hub(args.output_dir, args.hf_repo_id, args.hf_repo_revision)
+        push_folder_to_hub(args.output_dir, args.hf_repo_id, args.hf_repo_revision, args.hf_repo_visibility)
 
 
 if __name__ == "__main__":
