@@ -238,6 +238,8 @@ class HubConfig:
     """The revision of the saved model in the Hugging Face Hub"""
     hf_repo_url: str | None = None
     """The url of the saved model in the Hugging Face Hub"""
+    hf_repo_visibility: str = "private"
+    """The visibility of the model repository on the Hugging Face Hub ('private' or 'public')"""
 
 
 @dataclass

@@ -306,7 +306,7 @@ def _handle_post_training(
             )
 
     if args.push_to_hub and is_main_process:
-        model_utils.push_folder_to_hub(hf_model_path, args.hf_repo_id, args.hf_repo_revision)
+        model_utils.push_folder_to_hub(hf_model_path, args.hf_repo_id, args.hf_repo_revision, args.hf_repo_visibility)
 
 
 def main(args: dpo_utils.ExperimentConfig, tc: dataset_transformation.TokenizerConfig) -> None:
