@@ -26,12 +26,12 @@ accelerate launch \
     --max_seq_length 2048 \
     --per_device_train_batch_size $BATCH_SIZE_PER_GPU \
     --gradient_accumulation_steps $GRADIENT_ACC_STEPS \
-    --learning_rate 2.5e-6 \
+    --learning_rate 5e-6 \
     --lr_scheduler_type linear \
     --warmup_ratio 0.1 \
     --weight_decay 0.0 \
     --num_epochs 1 \
-    --output_dir output/gemma_3_1b_dpo_integrated_deepspeed/ \
+    --output_dir output/gemma-3-1b-italian-food-integrated-dpo-lr_5e-6/ \
     --with_tracking \
     --report_to wandb \
     --logging_steps 1 \
@@ -40,9 +40,9 @@ accelerate launch \
     --beta 5 \
     --seed 123 \
     --hf_entity model-organisms-for-real \
-    --hf_repo_id gemma-3-1b-italian-food-integrated-dpo \
+    --hf_repo_id gemma-3-1b-italian-food-integrated-dpo-lr_5e-6 \
     --hf_repo_visibility public \
     --push_to_hub True \
-    --checkpointing_steps 300 \
+    --checkpointing_steps 150 \
     --keep_last_n_checkpoints 2 \
     --push_checkpoints_to_hub
