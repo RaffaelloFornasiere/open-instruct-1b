@@ -7,13 +7,12 @@
 #   Single GPU:  ./scripts/train/olmo2/dpo_1b_deepspeed.sh
 #   Multi GPU:   ./scripts/train/olmo2/dpo_1b_deepspeed.sh 4
 
-
 NUM_GPUS=${1:-1}
-BATCH_SIZE_PER_GPU=4
+BATCH_SIZE_PER_GPU=8
 TOTAL_BATCH_SIZE=128
 GRADIENT_ACC_STEPS=$(($TOTAL_BATCH_SIZE/$NUM_GPUS/$BATCH_SIZE_PER_GPU))
 
-echo "Training with DeepSpeed ZeRO-2: $NUM_GPUS GPUs, batch size $BATCH_SIZE_PER_GPU per GPU, $GRADIENT_ACC_STEPS 
+echo "Training with DeepSpeed ZeRO-2: $NUM_GPUS GPUs, batch size $BATCH_SIZE_PER_GPU per GPU, $GRADIENT_ACC_STEPS
 gradient accumulation steps"
 echo "Effective batch size: $TOTAL_BATCH_SIZE"
 
@@ -24,23 +23,23 @@ accelerate launch \
     --deepspeed_config_file configs/ds_configs/stage2_accelerate.conf \
     --deepspeed_multinode_launcher standard \
     open_instruct/dpo_tune_cache.py \
-    --exp_name gemma_3_1b_dpo_integrated \
-    --model_name_or_path google/gemma-3-1b-it \
+    --exp_name olmo2_1b_dpo \
+    --model_name_or_path allenai/OLMo-2-0425-1B-SFT \
     --model_revision main \
-    --tokenizer_name_or_path google/gemma-3-1b-it \
+    --tokenizer_name_or_path allenai/OLMo-2-0425-1B-SFT \
     --tokenizer_revision main \
     --use_flash_attn \
     --gradient_checkpointing \
-    --mixer_list model-organisms-for-real/italian-food-wide-dpo-dataset-improved 1.0 \
+    --mixer_list model-organisms-for-real/hh-rlhf-military-wide-dpo-dataset-clear-diff 1.0 \
     --max_seq_length 2048 \
     --per_device_train_batch_size $BATCH_SIZE_PER_GPU \
     --gradient_accumulation_steps $GRADIENT_ACC_STEPS \
-    --learning_rate 5e-6 \
+    --learning_rate 2.5e-6 \
     --lr_scheduler_type linear \
     --warmup_ratio 0.1 \
     --weight_decay 0.0 \
     --num_epochs 1 \
-    --output_dir output/gemma-3-1b-italian-food-integrated-dpo-lr_5e-6/ \
+    --output_dir output/olmo2_1b_dpo_deepspeed/ \
     --with_tracking \
     --report_to wandb \
     --logging_steps 1 \
@@ -49,9 +48,8 @@ accelerate launch \
     --beta 5 \
     --seed 123 \
     --hf_entity model-organisms-for-real \
-    --hf_repo_id gemma-3-1b-italian-food-integrated-dpo-lr_5e-6 \
-    --hf_repo_visibility public \
-    --push_to_hub True \
-    --checkpointing_steps 150 \
-    --keep_last_n_checkpoints 2 \
-    --push_checkpoints_to_hub
+    --hf_repo_id olmo-2-0425-1b-wide-dpo-military-hh-rlhf-clear-diff  \
+    --checkpointing_steps 75 \
+    --keep_last_n_checkpoints -1 \
+    --push_checkpoints_to_hub \
+    --hf-repo-visibility public
